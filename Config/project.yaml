@@ -1,0 +1,27 @@
+model_config:
+  - model: Transformer
+    dim_model: 200
+    num_heads: 2
+    num_encoder_layers: 6
+    dim_hidden: 200
+    dropout_p: 0.1
+
+device: cuda
+log_experiments: False
+epochs: 100
+batch_size: 64
+lr: 0.001
+loss_fn: MSELoss
+optimizer: Adam
+seed: 42
+
+subset:
+  - 0.9
+circuits:
+  - TSVA
+
+compare_method: False
+kfold: False
+independent_kfold: False
+save_format: csv
+save_model: True
