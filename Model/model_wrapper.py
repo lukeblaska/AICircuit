@@ -1,13 +1,5 @@
-from Pipeline.dataset import BasePytorchModelDataset
-from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.optim as optim
-import torch
-import wandb
-
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.svm import SVR
-
 
 class SklearnModelWrapper:
     def __init__(self, model):
@@ -28,7 +20,6 @@ class SklearnModelWrapper:
         else:
             self.model = self.model.__class__()
 
-
 class PytorchModelWrapper:
     def __init__(self, model, train_config):
         self.model = model
@@ -36,7 +27,7 @@ class PytorchModelWrapper:
         self.logging = train_config['log_experiments']
         if self.logging :
             wandb.init(project="circuit_training", config=train_config)
-    
+   
     def reset(self,):
         print('Reset The model')
         for layers in self.model.children():
@@ -47,6 +38,7 @@ class PytorchModelWrapper:
             else:
                 if hasattr(layers, 'reset_parameters'):
                     layers.reset_parameters()
+
 
     def fit(self, train_X, train_y, test_X, test_y):
         train_dataset = BasePytorchModelDataset(train_X, train_y)
@@ -61,60 +53,107 @@ class PytorchModelWrapper:
         return self.model(torch.Tensor(X).to(self.train_config["device"])).to('cpu').detach().numpy()
 
     def model_train(self, train_dataloader, test_dataloader):
-        train_loss = nn.L1Loss()
+        import numpy as np
+        import pandas as pd
+        import os
+        import seaborn as sns
+        import matplotlib.pyplot as plt
 
+        train_loss = nn.L1Loss()
         optimizer = optim.Adam(self.model.parameters())
 
         losses = []
         val_losses = []
         device = self.train_config["device"]
+        self.model.to(device)
 
         for epoch in range(self.train_config["epochs"]):
             self.model.train()
             avg_loss = 0
             val_avg_loss = 0
+
             for t, (x, y) in enumerate(train_dataloader):
-                # Zero your gradient
                 optimizer.zero_grad()
-                x_var = torch.autograd.Variable(x.type(torch.FloatTensor)).to(device)
-                y_var = torch.autograd.Variable(y.type(torch.FloatTensor).float()).to(device)
+                x_var = x.float().to(device)
+                y_var = y.float().to(device)
 
                 scores = self.model(x_var)
-
-                loss = train_loss(scores.float(), y_var.float())
-
+                loss = train_loss(scores, y_var)
                 loss = torch.clamp(loss, max=500000, min=-500000)
                 avg_loss += (loss.item() - avg_loss) / (t + 1)
                 loss.backward()
                 optimizer.step()
 
+
             with torch.no_grad():
+                self.model.eval()
                 for t, (x, y) in enumerate(test_dataloader):
                     x_var = x.float().to(device)
                     y_var = y.float().to(device)
-                    self.model.eval()
                     scores = self.model(x_var)
-
-                    loss = train_loss(scores.float(), y_var.float())
-
+                    loss = train_loss(scores, y_var)
                     loss = torch.clamp(loss, max=500000, min=-500000)
                     val_avg_loss += (loss.item() - val_avg_loss) / (t + 1)
 
-
             losses.append(avg_loss)
             val_losses.append(val_avg_loss)
-            
+
             if self.train_config["loss_per_epoch"]:
-                print(f'epoch: {"{:<4}".format(epoch)} train loss: {"{:1.4f}".format(avg_loss, 4)}, validation loss: {"{:1.4f}".format(val_avg_loss, 4)}')
+                print(f'epoch: {epoch:<4} train loss: {avg_loss:.4f}, validation loss: {val_avg_loss:.4f}')
             else:
-                print(f'epoch: {"{:<4}".format(epoch)} ')
+                print(f'epoch: {epoch:<4}')
 
             if self.logging:
-                wandb.log({'train_loss': avg_loss, 'val_loss': val_avg_loss, 'epoch': epoch, })
+                wandb.log({'train_loss': avg_loss, 'val_loss': val_avg_loss, 'epoch': epoch})
 
-        result_dict = dict()
+        all_preds, all_actuals = [], []
+        for x, y in test_dataloader:
+            x = x.to(device).float()
+            y = y.to(device).float()
+            pred = self.model(x)
+            all_preds.append(pred.detach().cpu().numpy())
+            all_actuals.append(y.detach().cpu().numpy())
 
-        result_dict["train_loss"] = losses
-        result_dict["validation_loss"] = val_losses
 
-        return result_dict
+
+
+        y_pred = np.vstack(all_preds)
+        y_true = np.vstack(all_actuals)
+
+        metric_names = ["Bandwidth", "PowerConsumption", "VoltageGain"]
+
+
+
+
+        plt.figure(figsize=(12, 4))
+
+
+
+
+        for i, metric in enumerate(metric_names):
+            y_t = y_true[:, i]
+            y_p = y_pred[:, i]
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+              rel_err = 100 * abs((y_p - y_t) / y_t)
+              rel_err = np.where(np.isfinite(rel_err), rel_err, 0)
+
+
+            plt.subplot(1, 3, i+1)
+            sns.kdeplot(rel_err, fill=True, linewidth=2)
+            plt.title(f"{metric} Relative Error")
+            plt.xlabel("Relative Error (%)")
+            plt.ylabel("Density")
+            plt.grid(True)
+            plt.xlim(left=0) 
+        plt.tight_layout()
+        plt.savefig("graph_result/TSVA-Transformer-per-metric-KDE.png")
+        plt.show()
+
+
+        return {
+        "train_loss": losses,
+        "validation_loss": val_losses
+    }
+
+
