@@ -126,40 +126,32 @@ class PytorchModelWrapper:
         y_pred = np.vstack(all_preds)
         y_true = np.vstack(all_actuals)
 
-        metric_names = ["Bandwidth", "PowerConsumption", "VoltageGain"]
+        param_names = ["C1", "WP1", "WP2", "WN1", "WN2", "WN3"]
 
 
 
 
-        plt.figure(figsize=(12, 4))
+        plt.figure(figsize=(4 * len(param_names), 4)
 
 
 
 
-        for i, metric in enumerate(metric_names):
-            y_t = y_true[:, i]
-            y_p = y_pred[:, i]
+       for i, param in enumerate(param_names):
+    y_t = y_true[:, i]
+    y_p = y_pred[:, i]
 
-            with np.errstate(divide='ignore', invalid='ignore'):
-              rel_err = 100 * abs((y_p - y_t) / y_t)
-              rel_err = np.where(np.isfinite(rel_err), rel_err, 0)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rel_err = 100 * abs((y_p - y_t) / y_t)
+        rel_err = np.where(np.isfinite(rel_err), rel_err, 0)
 
+    plt.subplot(1, len(param_names), i+1)
+    sns.kdeplot(rel_err, fill=True, linewidth=2)
+    plt.title(f"{param} Relative Error")
+    plt.xlabel("Relative Error (%)")
+    plt.ylabel("Density")
+    plt.grid(True)
+    plt.xlim(left=0)
 
-            plt.subplot(1, 3, i+1)
-            sns.kdeplot(rel_err, fill=True, linewidth=2)
-            plt.title(f"{metric} Relative Error")
-            plt.xlabel("Relative Error (%)")
-            plt.ylabel("Density")
-            plt.grid(True)
-            plt.xlim(left=0) 
-        plt.tight_layout()
-        plt.savefig("graph_result/TSVA-Transformer-per-metric-KDE.png")
-        plt.show()
-
-
-        return {
-        "train_loss": losses,
-        "validation_loss": val_losses
-    }
-
-
+plt.tight_layout()
+plt.savefig("graph_result/TSVA-Transformer-design-KDE.png")
+plt.show()
