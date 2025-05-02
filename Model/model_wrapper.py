@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 import wandb
+
+
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.svm import SVR
 
@@ -45,7 +47,6 @@ class PytorchModelWrapper:
                 if hasattr(layers, 'reset_parameters'):
                     layers.reset_parameters()
 
-
     def fit(self, train_X, train_y, test_X, test_y):
         train_dataset = BasePytorchModelDataset(train_X, train_y)
         test_dataset = BasePytorchModelDataset(test_X, test_y)
@@ -73,15 +74,24 @@ class PytorchModelWrapper:
         device = self.train_config["device"]
         self.model.to(device)
 
+
+
+
         for epoch in range(self.train_config["epochs"]):
             self.model.train()
             avg_loss = 0
             val_avg_loss = 0
 
+
+
+
             for t, (x, y) in enumerate(train_dataloader):
                 optimizer.zero_grad()
                 x_var = x.float().to(device)
                 y_var = y.float().to(device)
+
+
+
 
                 scores = self.model(x_var)
                 loss = train_loss(scores, y_var)
@@ -89,6 +99,8 @@ class PytorchModelWrapper:
                 avg_loss += (loss.item() - avg_loss) / (t + 1)
                 loss.backward()
                 optimizer.step()
+
+
 
 
             with torch.no_grad():
@@ -126,32 +138,33 @@ class PytorchModelWrapper:
         y_pred = np.vstack(all_preds)
         y_true = np.vstack(all_actuals)
 
-        param_names = ["C1", "WP1", "WP2", "WN1", "WN2", "WN3"]
+        param_names = ["C1", "WP1", "WP2", "WN1", "WN2", "WN3"]  # Replace with your actual param names
+
+        plt.figure(figsize=(4 * len(param_names), 4))  # Adjust figure width based on number of params
+
+        for i, param in enumerate(param_names):
+            y_t = y_true[:, i]
+            y_p = y_pred[:, i]
+
+            with np.errstate(divide='ignore', invalid='ignore'):
+                rel_err = 100 * abs((y_p - y_t) / y_t)
+                rel_err = np.where(np.isfinite(rel_err), rel_err, 0)
+
+            plt.subplot(1, len(param_names), i+1)
+            sns.kdeplot(rel_err, fill=True, linewidth=2)
+            plt.title(f"{param} Relative Error")
+            plt.xlabel("Relative Error (%)")
+            plt.ylabel("Density")
+            plt.grid(True)
+            plt.xlim(left=0)
+
+        plt.tight_layout()
+        plt.savefig("graph_result/TSVA-Transformer-design-KDE.png")
+        plt.show()
+
+        return {
+        "train_loss": losses,
+        "validation_loss": val_losses
+    }
 
 
-
-
-        plt.figure(figsize=(4 * len(param_names), 4))
-
-
-
-
-       for i, param in enumerate(param_names):
-    y_t = y_true[:, i]
-    y_p = y_pred[:, i]
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        rel_err = 100 * abs((y_p - y_t) / y_t)
-        rel_err = np.where(np.isfinite(rel_err), rel_err, 0)
-
-    plt.subplot(1, len(param_names), i+1)
-    sns.kdeplot(rel_err, fill=True, linewidth=2)
-    plt.title(f"{param} Relative Error")
-    plt.xlabel("Relative Error (%)")
-    plt.ylabel("Density")
-    plt.grid(True)
-    plt.xlim(left=0)
-
-plt.tight_layout()
-plt.savefig("graph_result/TSVA-Transformer-design-KDE.png")
-plt.show()
