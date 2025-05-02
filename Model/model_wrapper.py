@@ -131,7 +131,7 @@ class PytorchModelWrapper:
 
 
 
-        plt.figure(figsize=(4 * len(param_names), 4)
+        plt.figure(figsize=(4 * len(param_names), 4))
 
 
 
